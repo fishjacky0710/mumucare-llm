@@ -1,0 +1,8 @@
+huggingface_hub==0.33.1
+pandas==2.3.0
+langchain==0.3.26
+langchain-community==0.3.26
+sentence-transformers==4.1.0
+chromadb==1.0.13
+fastapi
+openpyxl==3.1.5
