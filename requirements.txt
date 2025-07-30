@@ -4,5 +4,6 @@ langchain==0.3.26
 langchain-community==0.3.26
 sentence-transformers==4.1.0
 chromadb==1.0.13
-fastapi
+#fastapi
 openpyxl==3.1.5
+gradio==5.37.0

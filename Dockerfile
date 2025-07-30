@@ -10,5 +10,6 @@ COPY ./hf_cache/bge-small-zh-v1.5 /app/hf_cache/bge-small-zh-v1.5
 
 COPY . .
 
-ENTRYPOINT ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT"]
+ENTRYPOINT ["sh", "-c", "python main.py"]
+
 
