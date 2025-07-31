@@ -25,7 +25,7 @@ from langchain.memory import ConversationBufferMemory
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
 persist_dir = os.path.join(base_dir, "chroma_db")
-embedding_model = SentenceTransformerEmbeddings(model_name="./hf_cache/bge-small-zh-v1.5")
+embedding_model = SentenceTransformerEmbeddings(model_name="./hf_cache/intfloat-multi-e5-base")
 client = PersistentClient(path=persist_dir)
 vectorstore = Chroma(
     client=client,
