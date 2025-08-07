@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-COPY ./hf_cache/bge-small-zh-v1.5 /app/hf_cache/bge-small-zh-v1.5
+COPY ./hf_cache/intfloat-multi-e5-base /app/intfloat-multi-e5-base
 
 COPY . .
 
