@@ -1,3 +1,5 @@
 chroma_db/
+chroma_db_*/
 hf_cache/
 __pycache__/
+.env
