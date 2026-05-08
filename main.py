@@ -260,7 +260,6 @@ def replace_name_with_stars(text, full_names: list) -> str:
 
 def import_student_names() -> list:
     try:
-        import pandas as pd
         df = pd.read_excel("學生名單.xlsx")
         return df["姓名"].dropna().astype(str).tolist()
     except Exception:
