@@ -1,33 +1,37 @@
-# ==== 科學運算核心（先維持 1.x，避免現有輪子衝突） ====
+# ==== 科學運算核心 ====
 numpy==1.26.4
-protobuf==3.20.3
-
-# ==== 常用科學運算 ====
 pandas==2.3.2
 scipy==1.16.1
 scikit-learn==1.7.1
-sympy==1.14.0
 
 # ==== 生成式AI / LLM ====
 transformers==4.55.4
-sentence-transformers==5.1.0
-torch==2.2.0
+sentence-transformers>=2.2.0
 tokenizers==0.21.4
 safetensors==0.6.2
 tiktoken==0.7.0
 huggingface_hub
-accelerate
-llama-cpp-python==0.2.90
-charset-normalizer
+# torch 在 Dockerfile 中以 CPU-only wheel 安裝，不在這裡列出
 
 # ==== LangChain & 向量資料庫 ====
 langchain==0.3.27
 langchain-core==0.3.74
 langchain-community==0.3.27
+langchain-openai
 langchain-text-splitters==0.3.9
 langchain-huggingface
 langchain-chroma
 chromadb==1.0.20
+
+# ==== 搜尋 ====
+rank-bm25
+jieba
+
+# ==== 評估 ====
+ragas
+
+# ==== UI ====
+gradio
 
 # ==== API / 服務框架 ====
 fastapi==0.116.1
@@ -38,7 +42,7 @@ pydantic-settings==2.10.1
 python-dotenv==1.1.1
 
 # ==== 其他 ====
-onnxruntime==1.22.1
+onnxruntime
 openpyxl==3.1.5
 Jinja2==3.1.6
 requests==2.32.5
@@ -47,4 +51,3 @@ orjson==3.11.2
 regex==2025.7.34
 rich==14.1.0
 typing_extensions==4.14.1
-

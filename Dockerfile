@@ -1,48 +1,27 @@
-# ---- build llama.cpp (linux) ----
-FROM ubuntu:22.04 AS build
-
-RUN apt-get update && apt-get install -y \
-    build-essential cmake git pkg-config \
-    curl libcurl4-openssl-dev \
- && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /src
-RUN git clone https://github.com/ggerganov/llama.cpp . \
- && cmake -S . -B build \
-      -DLLAMA_SERVER=ON \
-      -DLLAMA_METAL=OFF \
-      -DLLAMA_CURL=ON \
-      -DCMAKE_BUILD_TYPE=Release \
- && cmake --build build -j 2
-
-# ---- runtime ----
-FROM ubuntu:22.04
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libcurl4 \
-    libstdc++6 \
-    libgcc-s1 \
-    libgomp1 \
-    libatomic1 \
- && rm -rf /var/lib/apt/lists/*
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# llama-server
-COPY --from=build /src/build/bin/llama-server /app/llama-server
+RUN apt-get update && apt-get install -y \
+    build-essential gcc git \
+    && rm -rf /var/lib/apt/lists/*
 
-# copy shared libs produced by build (if any)
-# NOTE: destination MUST end with /
-COPY --from=build /src/build/bin/*.so* /usr/local/lib/
+# CPU-only torch — 比 CUDA 版本小約 80%，Cloud Run 不需 GPU
+RUN pip install --no-cache-dir \
+    torch==2.2.0 \
+    --index-url https://download.pytorch.org/whl/cpu
 
-RUN chmod +x /app/llama-server \
- && ldconfig
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# 在 build 階段預先下載 HuggingFace 模型，避免冷啟動時才下載
+ENV HF_HOME=/app/.cache/huggingface
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-base')"
+RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('jinaai/jina-reranker-v2-base-multilingual', trust_remote_code=True)"
+
+COPY . .
 
 ENV PORT=8080
 EXPOSE 8080
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["python", "main.py"]

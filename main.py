@@ -14,8 +14,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from aiohttp.web_middlewares import middleware
-from certifi import contents
 from chromadb import PersistentClient
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,8 +28,6 @@ from langchain_core.documents import Document
 from langchain_core.runnables import RunnableLambda
 
 
-from langchain_classic.chains import LLMChain
-from langchain_classic.memory import ConversationBufferMemory
 from sentence_transformers import SentenceTransformer, CrossEncoder
 
 
@@ -113,10 +109,6 @@ CUSTOM_CSS = """
 }
 """
 
-###本地生成用
-from llama_cpp import Llama
-from transformers import AutoTokenizer,AutoModelForCausalLM
-from peft import PeftConfig,AutoPeftModelForCausalLM
 
 
 if not os.environ.get("OPENAI_API_KEY"):
@@ -161,15 +153,6 @@ COLLECTION = "rag_knowledge"
 TOPK=4
 MAXLEN=512
 MAX_NEW=512
-MAX_MEM = {"mps": "6GiB", "cpu": "48GiB"} 
-TOK, MODEL = None, None
-CALLS = 0
-
-import transformers.modeling_utils as mu
-OFFLOAD_DIR = "./offload"
-os.makedirs(OFFLOAD_DIR, exist_ok=True)
-os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
-os.environ["TRANSFORMERS_OFFLOAD_DIR"] = OFFLOAD_DIR
 
 
 
@@ -227,34 +210,6 @@ def reciprocal_rank_fusion(rank_lists, k: int = 60):
             scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
     return scores
 
-def load_model():
-    # 讀出 base 名稱，給 tokenizer 用
-    base_name = PeftConfig.from_pretrained(ADAPTER).base_model_name_or_path
-
-    tok = AutoTokenizer.from_pretrained(base_name, use_fast=True)
-    if tok.pad_token is None:
-        tok.pad_token = tok.eos_token
-    tok.padding_side = "right"
-
-    # 直接用 AutoPeftModelForCausalLM 讓 transformers 幫你把 base + LoRA 一起分派
-    model = AutoPeftModelForCausalLM.from_pretrained(
-        ADAPTER,
-        dtype=torch.bfloat16,
-        device_map={"":"mps"},
-        low_cpu_mem_usage=True,
-        max_memory=MAX_MEM,
-        offload_folder=OFFLOAD_DIR,   # ← 關鍵：提供 offload 目錄
-    )
-
-    # MPS 小技巧：關 cache、用 eager 注意力，較穩
-    try:
-        model.config.use_cache = False
-        model.config.attn_implementation = "eager"
-    except Exception:
-        pass
-
-    model.eval()
-    return tok, model
 
 def _safe_ref_text(refs, max_chars=240):
     out = []
@@ -316,13 +271,6 @@ def build_messages(domain: str, typ: str, info_sentence: str, refs:list[str]):
         {"role":"user","content":user}
     ]
 
-
-memory = ConversationBufferMemory(
-    return_messages=True,
-    memory_key="chat_history",
-    input_key="question",
-    output_key="answer",
-)
 
 _embm = SentenceTransformer("intfloat/multilingual-e5-base")
 
@@ -559,8 +507,11 @@ def quick_check(text: str, min_zh=20, max_items=10):
 
 
 def import_student_names() -> list:
-    df = pd.read_excel("學生名單.xlsx")
-    return df["姓名"].dropna().astype(str).tolist()
+    try:
+        df = pd.read_excel("學生名單.xlsx")
+        return df["姓名"].dropna().astype(str).tolist()
+    except Exception:
+        return []
 
 adult_domain_options = ["身體福祉","情緒福祉","物質福祉","個人發展","自我決策","人際關係","權利","社會融合"]
 child_domain_options = ["健康與安全","感官知覺","精細動作","粗大動作","語言溝通","認知","生活自理","社會適應"]
@@ -1029,12 +980,6 @@ def clear_all_outputs():
 #     return gr.update(visible=True,interactive=True,choices=social_domain_options,value=social_domain_options[0])
 
 
-def get_model():
-    global TOK, MODEL
-    if TOK is None or MODEL is None:
-        TOK, MODEL = load_model()
-    return TOK, MODEL
-
 with gr.Blocks(css=CUSTOM_CSS) as demo:
     loading_html = gr.HTML("", visible=False)
     
@@ -1470,7 +1415,8 @@ if __name__ == "__main__":
     #             inputs = TOK(prompt, return_tensors="pt").to(MODEL.device)
     #             outputs = MODEL.generate(**inputs, max_new_tokens=300)
     #             print(TOK.decode(outputs[0], skip_special_tokens=True))
-    demo.launch(server_name="127.0.0.1",server_port=7860, share=True)
+    port = int(os.environ.get("PORT", 7860))
+    demo.launch(server_name="0.0.0.0", server_port=port)
     # results = collection.get()
     # for i in range(len(results['ids'])):
     #     print(f"🧾 編號: {results['ids'][i]}")
