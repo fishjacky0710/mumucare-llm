@@ -3,7 +3,7 @@
 # Cloud Run 部署腳本
 # 費用最精簡策略：
 #   - min-instances=0  → 無人使用時縮到 0，不計費
-#   - max-instances=1  → 限制最多 1 個 instance
+#   - max-instances=2  → 少數人同時使用時可開第 2 台，閒置仍縮到 0
 #   - CPU 只在處理 request 時計費（Cloud Run 預設行為）
 # ============================================================
 set -euo pipefail
@@ -50,7 +50,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --platform managed \
   --allow-unauthenticated \
   --min-instances 0 \
-  --max-instances 1 \
+  --max-instances 2 \
   --memory 4Gi \
   --cpu 2 \
   --timeout 300 \
