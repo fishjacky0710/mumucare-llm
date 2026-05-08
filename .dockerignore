@@ -1,4 +1,21 @@
 __pycache__/
 *.pyc
+*.pyo
 venv/
 .git/
+
+# 絕對不能進 image 的機密
+.env
+
+# HuggingFace 本機快取（模型在 Dockerfile build 時另行下載）
+.cache/
+hf_cache/
+
+# 部署 / 開發工具，container 內不需要
+deploy.sh
+entrypoint.sh
+download_model.py
+
+# 其他雜項
+.DS_Store
+*.md

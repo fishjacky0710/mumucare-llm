@@ -1,5 +1,5 @@
 
-import os, re, gc, html
+import os, re, html
 import langchain
 import gradio as gr
 import pandas as pd
@@ -15,11 +15,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from chromadb import PersistentClient
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
-from langchain_community.llms import LlamaCpp
-from langchain_community.chat_models import ChatLlamaCpp
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -114,7 +109,7 @@ CUSTOM_CSS = """
 if not os.environ.get("OPENAI_API_KEY"):
     raise RuntimeError("OPENAI_API_KEY 未設定，請在 .env 檔案中設定")
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-langchain.debug = True
+langchain.debug = os.environ.get("LANGCHAIN_DEBUG", "false").lower() == "true"
 base_dir = os.path.abspath(os.path.dirname(__file__))
 persist_dir = os.path.join(base_dir, "chroma_db")
 # model_path = os.path.join(base_dir, "models", "gemma-2b-it.Q4_K_M.gguf")
