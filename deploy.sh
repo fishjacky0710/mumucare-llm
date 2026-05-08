@@ -20,9 +20,15 @@ SERVICE_NAME="mumucare-llm"
 REGION="asia-east1"
 IMAGE="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
 
-# OPENAI_API_KEY 必須已設定
+# 若未設定 OPENAI_API_KEY，自動從 .env 讀取
 if [ -z "${OPENAI_API_KEY:-}" ]; then
-  echo "❌ 請先設定 OPENAI_API_KEY 環境變數"
+  if [ -f ".env" ]; then
+    export $(grep -v '^#' .env | grep OPENAI_API_KEY | xargs)
+  fi
+fi
+
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+  echo "❌ 找不到 OPENAI_API_KEY，請在 .env 檔案中設定或手動 export"
   exit 1
 fi
 
