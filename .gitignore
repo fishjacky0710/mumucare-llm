@@ -3,3 +3,5 @@ chroma_db_*/
 hf_cache/
 __pycache__/
 .env
+*.xlsx
+*.xls
