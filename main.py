@@ -29,7 +29,7 @@ langchain.debug = os.environ.get("LANGCHAIN_DEBUG", "false").lower() == "true"
 
 # ── 路徑與常數 ──────────────────────────────────────────────
 BASE_DIR    = os.path.abspath(os.path.dirname(__file__))
-PERSIST_DIR = os.path.join(BASE_DIR, "chroma_db")
+PERSIST_DIR = os.path.join(BASE_DIR, "chroma_db_115")
 COLLECTION  = "rag_knowledge"
 TOPK        = 4
 
