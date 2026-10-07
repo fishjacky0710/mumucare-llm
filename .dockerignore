@@ -1,4 +1,11 @@
 __pycache__/
 *.pyc
 venv/
+.venv-api-test/
 .git/
+.env
+*-firebase-adminsdk-*.json
+firebase-adminsdk*.json
+.DS_Store
+.gradio/
+prompt_strings_dump.md

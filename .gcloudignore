@@ -15,5 +15,16 @@
 
 # Python pycache:
 __pycache__/
+*.pyc
+
+# Local secrets and development files:
+.env
+*-firebase-adminsdk-*.json
+firebase-adminsdk*.json
+.DS_Store
+.gradio/
+.venv-api-test/
+prompt_strings_dump.md
+
 # Ignored by the build system
 /setup.cfg
