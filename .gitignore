@@ -1,11 +1,13 @@
 chroma_db/
-chroma_db_115/
+chroma_db_*/
 hf_cache/
 __pycache__/
 .env
 .gradio/
 .venv-api-test/
-學生名單.xlsx
+.DS_Store
+*.xlsx
+*.xls
 
 # Firebase Admin SDK credentials (never commit private keys)
 *-firebase-adminsdk-*.json

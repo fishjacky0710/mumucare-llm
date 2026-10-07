@@ -1,8 +1,6 @@
-# ==== 科學運算核心（先維持 1.x，避免現有輪子衝突） ====
+# ==== 科學運算核心 ====
 numpy==1.26.4
 protobuf==5.29.5
-
-# ==== 常用科學運算 ====
 pandas==2.3.2
 scipy==1.16.1
 scikit-learn==1.7.1
@@ -32,10 +30,19 @@ langchain-huggingface
 langchain-chroma
 chromadb==1.0.20
 
+# ==== 搜尋 ====
+rank-bm25
+jieba
+
+# ==== 評估 ====
+ragas
+
+# ==== UI ====
+gradio
+
 # ==== API / 服務框架 ====
 fastapi==0.116.1
 firebase-admin==6.5.0
-gradio
 uvicorn==0.35.0
 starlette==0.47.3
 pydantic==2.11.7
@@ -54,7 +61,4 @@ regex==2025.7.34
 rich==14.1.0
 typing_extensions==4.14.1
 certifi
-jieba
-rank-bm25
-ragas
 peft
