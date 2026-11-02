@@ -20,15 +20,17 @@ RUN pip install --no-cache-dir \
     torch==2.2.0 \
     --index-url https://download.pytorch.org/whl/cpu
 
-COPY requirements.txt .
+COPY requirements-api.txt .
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
+ && pip install --no-cache-dir -r requirements-api.txt
 
 # 在 build 階段預先下載 HuggingFace 模型，避免冷啟動時才下載
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-base')"
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='jinaai/jina-reranker-v2-base-multilingual')"
 
 COPY . .
+
+# Fail the build if the bundled HNSW snapshot cannot be queried on Linux.
+RUN python validate_chroma.py --query
 
 EXPOSE 8080
 

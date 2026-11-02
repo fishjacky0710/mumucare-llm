@@ -28,3 +28,20 @@ prompt_strings_dump.md
 
 # Ignored by the build system
 /setup.cfg
+
+# Only upload files used by the API container.
+*
+!Dockerfile
+!.dockerignore
+!requirements-api.txt
+!cloud_run_backend.py
+!ifsp_isp_ai.py
+!validate_chroma.py
+!search_timing.py
+!firestore_repository.py
+!employee_auth.py
+!cloudbuild-api.yaml
+!prompt.py
+!學生名單.xlsx
+!chroma_db_115/
+!chroma_db_115/**

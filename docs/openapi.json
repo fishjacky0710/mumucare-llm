@@ -1,0 +1,1680 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Mumucare ISP AI API",
+    "description": "API v1.1，前端直接呼叫 Cloud Run。使用 mumu-care Firebase 員工 ID Token：Authorization: Bearer <token>。驗證公司 Google 帳號、在職狀態與服務／領域權限；不接受舊 X-API-Key，不需要 Gateway。撤銷／停用檢查需要服務帳號的 roles/firebaseauth.viewer 權限。",
+    "version": "1.1.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Root  Get"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "description": "追蹤值，不是 idempotency key"
+          }
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "Healthz",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Healthz Healthz Get"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "description": "追蹤值，不是 idempotency key"
+          }
+        ]
+      }
+    },
+    "/v1/service-users": {
+      "get": {
+        "summary": "List Service Users",
+        "operationId": "list_service_users_v1_service_users_get",
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "description": "追蹤值，不是 idempotency key"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUserListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "請求資料格式不正確",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "領域、參考資料或資訊不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登入 Token 缺少、無效、過期、撤銷或帳號停用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "公司帳號、在職、角色、服務單位或領域權限不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "服務使用者或 ISP 不存在／已刪除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "請求超過 256 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "請求過於頻繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "目前固定 60 秒"
+              }
+            }
+          },
+          "500": {
+            "description": "未預期處理錯誤",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "員工驗證、Firestore、RAG 或生成暫時無法完成",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "FirebaseBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/isps": {
+      "post": {
+        "summary": "List Adult Isps",
+        "operationId": "list_adult_isps_v1_isps_post",
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "description": "追蹤值，不是 idempotency key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentIdentity"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdultIspListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "請求資料格式不正確",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "領域、參考資料或資訊不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登入 Token 缺少、無效、過期、撤銷或帳號停用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "公司帳號、在職、角色、服務單位或領域權限不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "服務使用者或 ISP 不存在／已刪除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "請求超過 256 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "請求過於頻繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "目前固定 60 秒"
+              }
+            }
+          },
+          "500": {
+            "description": "未預期處理錯誤",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "員工驗證、Firestore、RAG 或生成暫時無法完成",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "FirebaseBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/context": {
+      "post": {
+        "summary": "Get Adult Isp Context",
+        "operationId": "get_adult_isp_context_v1_context_post",
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "description": "追蹤值，不是 idempotency key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdultIspIdentity"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdultIspContextResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "請求資料格式不正確",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "領域、參考資料或資訊不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登入 Token 缺少、無效、過期、撤銷或帳號停用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "公司帳號、在職、角色、服務單位或領域權限不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "服務使用者或 ISP 不存在／已刪除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "請求超過 256 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "請求過於頻繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "目前固定 60 秒"
+              }
+            }
+          },
+          "500": {
+            "description": "未預期處理錯誤",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "員工驗證、Firestore、RAG 或生成暫時無法完成",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "FirebaseBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/long-term-goals": {
+      "post": {
+        "summary": "Generate Long Term Goals",
+        "operationId": "generate_long_term_goals_v1_long_term_goals_post",
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "description": "追蹤值，不是 idempotency key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LongTermGoalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LongTermGoalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "請求資料格式不正確",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "領域、參考資料或資訊不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登入 Token 缺少、無效、過期、撤銷或帳號停用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "公司帳號、在職、角色、服務單位或領域權限不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "服務使用者或 ISP 不存在／已刪除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "請求超過 256 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "請求過於頻繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "目前固定 60 秒"
+              }
+            }
+          },
+          "500": {
+            "description": "未預期處理錯誤",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "員工驗證、Firestore、RAG 或生成暫時無法完成",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "FirebaseBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/references/search": {
+      "post": {
+        "summary": "Search References",
+        "operationId": "search_references_v1_references_search_post",
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "description": "追蹤值，不是 idempotency key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferenceSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "請求資料格式不正確",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "領域、參考資料或資訊不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登入 Token 缺少、無效、過期、撤銷或帳號停用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "公司帳號、在職、角色、服務單位或領域權限不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "服務使用者或 ISP 不存在／已刪除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "請求超過 256 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "請求過於頻繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "目前固定 60 秒"
+              }
+            }
+          },
+          "500": {
+            "description": "未預期處理錯誤",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "員工驗證、Firestore、RAG 或生成暫時無法完成",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "FirebaseBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/goals/generate": {
+      "post": {
+        "summary": "Generate Final Result",
+        "operationId": "generate_final_result_v1_goals_generate_post",
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "description": "追蹤值，不是 idempotency key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalGenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalGenerationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "請求資料格式不正確",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "領域、參考資料或資訊不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登入 Token 缺少、無效、過期、撤銷或帳號停用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "公司帳號、在職、角色、服務單位或領域權限不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "服務使用者或 ISP 不存在／已刪除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "請求超過 256 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "請求過於頻繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "目前固定 60 秒"
+              }
+            }
+          },
+          "500": {
+            "description": "未預期處理錯誤",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "員工驗證、Firestore、RAG 或生成暫時無法完成",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "FirebaseBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/goals/refine": {
+      "post": {
+        "summary": "Refine Final Result",
+        "operationId": "refine_final_result_v1_goals_refine_post",
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "description": "追蹤值，不是 idempotency key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefineGenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefineGenerationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "請求資料格式不正確",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "領域、參考資料或資訊不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登入 Token 缺少、無效、過期、撤銷或帳號停用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "公司帳號、在職、角色、服務單位或領域權限不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "服務使用者或 ISP 不存在／已刪除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "請求超過 256 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "請求過於頻繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "目前固定 60 秒"
+              }
+            }
+          },
+          "500": {
+            "description": "未預期處理錯誤",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "員工驗證、Firestore、RAG 或生成暫時無法完成",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "FirebaseBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdultIspContextResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "basic_info": {
+            "type": "string",
+            "title": "Basic Info"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "dream": {
+            "type": "string",
+            "title": "Dream"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "basic_info",
+          "summary",
+          "dream"
+        ],
+        "title": "AdultIspContextResponse"
+      },
+      "AdultIspIdentity": {
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Studentid"
+          },
+          "ispId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Ispid"
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Domain"
+          },
+          "service_type": {
+            "type": "string",
+            "const": "成人",
+            "title": "Service Type",
+            "default": "成人"
+          }
+        },
+        "type": "object",
+        "required": [
+          "studentId",
+          "ispId",
+          "domain"
+        ],
+        "title": "AdultIspIdentity"
+      },
+      "AdultIspListResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "basic_info": {
+            "type": "string",
+            "title": "Basic Info"
+          },
+          "isps": {
+            "items": {
+              "$ref": "#/components/schemas/IspItem"
+            },
+            "type": "array",
+            "title": "Isps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "basic_info",
+          "isps"
+        ],
+        "title": "AdultIspListResponse"
+      },
+      "FinalGenerationRequest": {
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Studentid"
+          },
+          "ispId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Ispid"
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Domain"
+          },
+          "service_type": {
+            "type": "string",
+            "const": "成人",
+            "title": "Service Type",
+            "default": "成人"
+          },
+          "selected_long_goal": {
+            "type": "string",
+            "maxLength": 3000,
+            "minLength": 1,
+            "title": "Selected Long Goal"
+          },
+          "selected_short_reference_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Selected Short Reference Ids"
+          },
+          "selected_strategy_reference_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Selected Strategy Reference Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "studentId",
+          "ispId",
+          "domain",
+          "selected_long_goal"
+        ],
+        "title": "FinalGenerationRequest"
+      },
+      "FinalGenerationResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "live"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "result"
+        ],
+        "title": "FinalGenerationResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "IspItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "IspItem"
+      },
+      "LongTermGoalRequest": {
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Studentid"
+          },
+          "ispId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Ispid"
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Domain"
+          },
+          "service_type": {
+            "type": "string",
+            "const": "成人",
+            "title": "Service Type",
+            "default": "成人"
+          },
+          "custom_important_to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Custom Important To"
+          },
+          "custom_important_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Custom Important For"
+          }
+        },
+        "type": "object",
+        "required": [
+          "studentId",
+          "ispId",
+          "domain"
+        ],
+        "title": "LongTermGoalRequest"
+      },
+      "LongTermGoalResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "important_to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Important To"
+          },
+          "important_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Important For"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "live"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "important_to",
+          "important_for"
+        ],
+        "title": "LongTermGoalResponse"
+      },
+      "ReferenceCandidate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "score",
+          "kind"
+        ],
+        "title": "ReferenceCandidate"
+      },
+      "ReferenceSearchRequest": {
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Studentid"
+          },
+          "ispId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Ispid"
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Domain"
+          },
+          "service_type": {
+            "type": "string",
+            "const": "成人",
+            "title": "Service Type",
+            "default": "成人"
+          },
+          "selected_long_goal": {
+            "type": "string",
+            "maxLength": 3000,
+            "minLength": 1,
+            "title": "Selected Long Goal"
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "default": 6
+          }
+        },
+        "type": "object",
+        "required": [
+          "studentId",
+          "ispId",
+          "domain",
+          "selected_long_goal"
+        ],
+        "title": "ReferenceSearchRequest"
+      },
+      "ReferenceSearchResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "search_direction": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Search Direction"
+          },
+          "short_term_references": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceCandidate"
+            },
+            "type": "array",
+            "title": "Short Term References"
+          },
+          "strategy_references": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceCandidate"
+            },
+            "type": "array",
+            "title": "Strategy References"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "live"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "search_direction",
+          "short_term_references",
+          "strategy_references"
+        ],
+        "title": "ReferenceSearchResponse"
+      },
+      "RefineGenerationRequest": {
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Studentid"
+          },
+          "ispId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Ispid"
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Domain"
+          },
+          "service_type": {
+            "type": "string",
+            "const": "成人",
+            "title": "Service Type",
+            "default": "成人"
+          },
+          "original": {
+            "type": "string",
+            "maxLength": 60000,
+            "minLength": 1,
+            "title": "Original"
+          },
+          "refine_prompt": {
+            "type": "string",
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Refine Prompt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "studentId",
+          "ispId",
+          "domain",
+          "original",
+          "refine_prompt"
+        ],
+        "title": "RefineGenerationRequest"
+      },
+      "RefineGenerationResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "live"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "result"
+        ],
+        "title": "RefineGenerationResponse"
+      },
+      "ServiceUserItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ServiceUserItem"
+      },
+      "ServiceUserListResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "service_users": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceUserItem"
+            },
+            "type": "array",
+            "title": "Service Users"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "service_users"
+        ],
+        "title": "ServiceUserListResponse"
+      },
+      "StudentIdentity": {
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Studentid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "studentId"
+        ],
+        "title": "StudentIdentity"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ApiError": {
+        "type": "object",
+        "required": [
+          "detail",
+          "request_id"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "FirebaseBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Firebase ID Token"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://mumucare-llm-663386326083.asia-east1.run.app"
+    }
+  ]
+}

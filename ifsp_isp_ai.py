@@ -7,6 +7,7 @@ from typing import Any, Literal
 import chromadb
 import pandas as pd
 import prompt as prompt_templates
+import search_timing
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +26,7 @@ STUDENT_FILE = os.getenv("STUDENT_FILE", os.path.join(BASE_DIR, "學生名單.xl
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-base")
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v2-base-multilingual")
+RERANKER_ENABLED = os.getenv("RERANKER_ENABLED", "false").strip().lower() == "true"
 
 adult_domain_options = ["身體福祉", "情緒福祉", "物質福祉", "個人發展", "自我決策", "人際關係", "權利", "社會融合"]
 child_domain_options = ["健康與安全", "感官知覺", "精細動作", "粗大動作", "語言溝通", "認知", "生活自理", "社會適應"]
@@ -148,11 +150,13 @@ def get_planner_llm() -> ChatOpenAI:
 
 
 @lru_cache(maxsize=1)
+@search_timing.timed("embedding_model_load")
 def get_embedder() -> SentenceTransformer:
     return SentenceTransformer(EMBEDDING_MODEL)
 
 
 @lru_cache(maxsize=1)
+@search_timing.timed("reranker_model_load")
 def get_reranker() -> CrossEncoder:
     # Jina's remote model code still imports the legacy module-level helper.
     # Transformers 4.55 moved it onto XLMRobertaEmbeddings.
@@ -166,6 +170,7 @@ def get_reranker() -> CrossEncoder:
 
 
 @lru_cache(maxsize=1)
+@search_timing.timed("chroma_collection_open")
 def get_chroma_collection():
     client = chromadb.PersistentClient(path=DBDIR)
     return client.get_collection(COLLECTION)
@@ -348,6 +353,7 @@ def split_disability_types(value: str) -> list[str]:
     return [str(int(part)) for part in cleaned.split(",") if part.strip().isdigit() and 1 <= int(part.strip()) <= 8]
 
 
+@search_timing.timed("query_planner")
 def ai_query_planner(
     domain: str,
     basic_info: str,
@@ -394,13 +400,16 @@ def ai_query_planner(
 def retrieve_hybrid_with_meta(domain: str, typ: str, query: str, topk: int = 6) -> list[Document]:
     collection = get_chroma_collection()
     where_filter = {"$and": [{"domain": {"$eq": domain}}, {"short": {"$eq": typ}}]}
-    qvec = get_embedder().encode([query], normalize_embeddings=True).tolist()
-    vec_res = collection.query(
-        query_embeddings=qvec,
-        n_results=topk,
-        where=where_filter,
-        include=["documents", "metadatas", "distances"],
-    )
+    embedder = get_embedder()
+    with search_timing.stage("query_embedding"):
+        qvec = embedder.encode([query], normalize_embeddings=True).tolist()
+    with search_timing.stage("chroma_vector_query", top_k=topk):
+        vec_res = collection.query(
+            query_embeddings=qvec,
+            n_results=topk,
+            where=where_filter,
+            include=["documents", "metadatas", "distances"],
+        )
 
     docs = []
     result_docs = vec_res.get("documents", [[]])[0]
@@ -429,7 +438,9 @@ def retrieve_hybrid_with_meta(domain: str, typ: str, query: str, topk: int = 6) 
 def rerank_docs(query: str, docs: list[Document], topk: int = 6) -> list[Document]:
     if not docs:
         return []
-    scores = get_reranker().predict([[query, doc.page_content] for doc in docs])
+    reranker = get_reranker()
+    with search_timing.stage("reranker_predict", candidate_count=len(docs)):
+        scores = reranker.predict([[query, doc.page_content] for doc in docs])
     ranked = []
     for doc, score in zip(docs, scores):
         doc.metadata["rerank_score"] = float(score)
@@ -437,6 +448,7 @@ def rerank_docs(query: str, docs: list[Document], topk: int = 6) -> list[Documen
     return sorted(ranked, key=lambda item: item.metadata["rerank_score"], reverse=True)[:topk]
 
 
+@search_timing.timed("retrieve_candidates")
 def retrieve_candidates(
     domain: str,
     typ: str,
@@ -486,17 +498,13 @@ def retrieve_candidates(
 
     tag_weight = {"full": 3.0, "planner": 2.5, "long_goal": 2.0, "basic_info": 1.0}
     all_docs = []
-    for tag, query in clean_query_items:
-        docs = retrieve_hybrid_with_meta(domain=domain, typ=typ, query=query, topk=topk)
-        docs = rerank_docs(query=query, docs=docs, topk=topk)
+    for query_index, (tag, query) in enumerate(clean_query_items, 1):
+        with search_timing.stage("retrieval_query", query_index=query_index,
+                                 query_count=len(clean_query_items), reference_type=typ):
+            docs = retrieve_hybrid_with_meta(domain=domain, typ=typ, query=query, topk=topk)
         for doc in docs:
             semantic_score = doc.metadata.get("semantic_score", 0)
-            rerank_score = doc.metadata.get("rerank_score", 0)
-            if semantic_score < 0.7 and rerank_score < 1.0:
-                continue
-
-            normalized_rerank = max(min(rerank_score / 10, 1.0), 0)
-            final_score = (semantic_score * 0.4 + normalized_rerank * 0.6) * tag_weight.get(tag, 1.0)
+            final_score = semantic_score * 0.4 * tag_weight.get(tag, 1.0)
 
             doc_types = split_disability_types(str(doc.metadata.get("disability_type", "")).strip())
             doc_level = str(doc.metadata.get("disability_level", "")).strip()
@@ -518,18 +526,43 @@ def retrieve_candidates(
 
     doc_map: dict[str, dict[str, Any]] = {}
     for doc, score in all_docs:
-        key = doc.page_content
+        key = str(doc.metadata.get("chroma_id") or doc.page_content)
         if key not in doc_map:
-            doc_map[key] = {"doc": doc, "score": 0.0, "matched_queries": [], "matched_tags": []}
-        doc_map[key]["score"] = max(doc_map[key]["score"], score)
+            doc_map[key] = {"doc": doc, "score": score, "matches": [], "matched_queries": [], "matched_tags": []}
+        if score > doc_map[key]["score"]:
+            doc_map[key]["doc"] = doc
+            doc_map[key]["score"] = score
+        doc_map[key]["matches"].append((float(doc.metadata.get("semantic_score", 0)),
+            tag_weight.get(doc.metadata.get("matched_tag"), 1.0) * doc.metadata["disability_bonus"]))
         doc_map[key]["matched_queries"].append(doc.metadata.get("matched_query", ""))
         doc_map[key]["matched_tags"].append(doc.metadata.get("matched_tag", ""))
 
     sorted_docs = sorted(doc_map.values(), key=lambda item: item["score"], reverse=True)
+    # Bound CPU inference and judge each unique candidate against the full goal context.
+    shortlist = sorted_docs[:max(20, topk)]
+    stage_name = "consolidated_rerank" if RERANKER_ENABLED else "reranker_disabled"
+    with search_timing.stage(stage_name, reference_type=typ,
+                             unique_count=len(doc_map), candidate_count=len(shortlist)):
+        candidates = [item["doc"] for item in shortlist]
+        reranked = rerank_docs(full_query, candidates, len(shortlist)) if RERANKER_ENABLED else candidates
+    ranked_items = []
+    for doc in reranked:
+        item = doc_map[str(doc.metadata.get("chroma_id") or doc.page_content)]
+        rerank_score = float(doc.metadata.get("rerank_score", 0))
+        normalized = max(min(rerank_score / 10, 1.0), 0)
+        eligible = [(semantic, weight) for semantic, weight in item["matches"]
+                    if not RERANKER_ENABLED or semantic >= 0.7 or rerank_score >= 1.0]
+        if not eligible:
+            continue
+        item["score"] = max((semantic * 0.4 + normalized * 0.6) * weight
+                            for semantic, weight in eligible)
+        ranked_items.append(item)
+    ranked_items.sort(key=lambda item: item["score"], reverse=True)
     final_docs = []
-    for item in sorted_docs[:topk]:
+    for item in ranked_items[:topk]:
         doc = item["doc"]
         doc.metadata["final_score"] = float(item["score"])
+        doc.metadata["reranker_enabled"] = RERANKER_ENABLED
         doc.metadata["core_intent"] = plan.get("core_intent", "")
         doc.metadata["search_focus"] = plan.get("search_focus", "")
         doc.metadata["matched_queries"] = list(set(item["matched_queries"]))

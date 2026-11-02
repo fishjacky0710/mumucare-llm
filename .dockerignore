@@ -17,8 +17,24 @@ hf_cache/
 
 # 部署 / 開發工具，container 內不需要
 deploy.sh
+setup_cloud_security.sh
 entrypoint.sh
 download_model.py
 
 # 其他雜項
 *.md
+
+# Only package the API and its retrieval/de-identification data.
+*
+!Dockerfile
+!requirements-api.txt
+!cloud_run_backend.py
+!ifsp_isp_ai.py
+!validate_chroma.py
+!search_timing.py
+!firestore_repository.py
+!employee_auth.py
+!prompt.py
+!學生名單.xlsx
+!chroma_db_115/
+!chroma_db_115/**

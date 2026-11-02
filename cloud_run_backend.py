@@ -7,10 +7,12 @@ cloud_run_frontend_demo.py.
 
 from __future__ import annotations
 
-import hmac
 import logging
 import os
 import re
+import time
+from collections import deque
+from threading import Lock
 from typing import Literal
 from uuid import uuid4
 
@@ -20,6 +22,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
+from firebase_admin import auth
+
+from employee_auth import AuthenticatedEmployee, EmployeeAccessDenied, authenticate_employee
 
 from firestore_repository import (
     EnrollmentNotFoundError,
@@ -28,30 +33,52 @@ from firestore_repository import (
     StudentNotFoundError,
 )
 import ifsp_isp_ai as core
+import search_timing
 
 
 logger = logging.getLogger("mumucare.api")
-API_KEY = os.getenv("MUMUCARE_API_KEY", "").strip()
+APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
+IS_PRODUCTION = APP_ENV == "production"
+MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", str(256 * 1024)))
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))
+configured_cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
 cors_origins = [
     origin.strip()
-    for origin in os.getenv(
-        "CORS_ALLOW_ORIGINS",
-        "http://127.0.0.1:7862,http://localhost:7862",
+    for origin in (
+        configured_cors_origins
+        or ("" if IS_PRODUCTION else "http://127.0.0.1:7862,http://localhost:7862")
     ).split(",")
     if origin.strip()
 ]
 
+if MAX_REQUEST_BYTES < 1024 or MAX_REQUEST_BYTES > 1024 * 1024:
+    raise RuntimeError("MAX_REQUEST_BYTES 必須介於 1024 與 1048576 之間。")
+if RATE_LIMIT_PER_MINUTE < 1 or RATE_LIMIT_PER_MINUTE > 300:
+    raise RuntimeError("RATE_LIMIT_PER_MINUTE 必須介於 1 與 300 之間。")
+if IS_PRODUCTION:
+    if not os.getenv("OPENAI_API_KEY", "").strip():
+        raise RuntimeError("正式環境必須設定 OPENAI_API_KEY。")
+    if any(origin == "*" or not origin.startswith("https://") for origin in cors_origins):
+        raise RuntimeError("正式環境 CORS_ALLOW_ORIGINS 只能使用明確的 HTTPS 網址。")
+
+_rate_limit_events: deque[float] = deque()
+_rate_limit_lock = Lock()
+
 app = FastAPI(
     title="Mumucare ISP AI API",
-    version="1.0.0",
+    version="1.1.0",
     description="OpenAI generation and Chroma RAG endpoints for ISP/IFSP.",
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
 )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-API-Key", "X-Request-ID"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    expose_headers=["X-Request-ID", "Retry-After"],
 )
 
 
@@ -157,9 +184,43 @@ DIRECT_IDENTIFIER_PATTERNS = (
 )
 
 
-def verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
-    if API_KEY and (not x_api_key or not hmac.compare_digest(x_api_key, API_KEY)):
-        raise HTTPException(status_code=401, detail="API 驗證失敗。")
+@search_timing.timed("employee_auth_and_rate_limit")
+def verify_employee(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> AuthenticatedEmployee:
+    parts = authorization.split() if authorization else []
+    if len(parts) != 2 or parts[0].lower() != "bearer" or len(parts[1]) > 16_384:
+        raise HTTPException(
+            status_code=401, detail="請先登入公司員工帳號。",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        employee = authenticate_employee(parts[1])
+    except (auth.InvalidIdTokenError, auth.UserDisabledError, ValueError) as error:
+        raise HTTPException(
+            status_code=401, detail="登入憑證無效、已過期或已撤銷，請重新登入。",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
+    except EmployeeAccessDenied as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except Exception as error:
+        raise service_unavailable("員工身分驗證", error) from error
+    request.state.employee = employee
+
+    now = time.monotonic()
+    with _rate_limit_lock:
+        while _rate_limit_events and now - _rate_limit_events[0] >= 60:
+            _rate_limit_events.popleft()
+        if len(_rate_limit_events) >= RATE_LIMIT_PER_MINUTE:
+            logger.warning("API rate limit exceeded [%s]", get_request_id(request))
+            raise HTTPException(
+                status_code=429,
+                detail="請求過於頻繁，請稍後再試。",
+                headers={"Retry-After": "60"},
+            )
+        _rate_limit_events.append(now)
+    return employee
 
 
 def deidentify(text: str, extra_names: tuple[str, ...] = ()) -> str:
@@ -195,18 +256,28 @@ def service_unavailable(action: str, error: Exception) -> HTTPException:
     )
 
 
-def get_firestore_repository() -> FirestoreRepository:
-    return FirestoreRepository()
+def get_firestore_repository(
+    employee: AuthenticatedEmployee,
+    domain: str | None = None,
+) -> FirestoreRepository:
+    try:
+        scope = employee.service_scope(domain)
+    except EmployeeAccessDenied as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    return FirestoreRepository(allowed_service_ids=scope)
 
 
-def load_adult_context(payload: AdultIspIdentity):
+@search_timing.timed("firestore_context_and_deidentification")
+def load_adult_context(payload: AdultIspIdentity, employee: AuthenticatedEmployee):
     validate_domain(payload.service_type, payload.domain)
     try:
-        context = get_firestore_repository().load_adult_isp_context(
+        context = get_firestore_repository(employee, payload.domain).load_adult_isp_context(
             payload.student_id,
             payload.isp_id,
             payload.domain,
         )
+    except HTTPException:
+        raise
     except EnrollmentNotFoundError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
     except (StudentNotFoundError, IspNotFoundError) as error:
@@ -272,12 +343,55 @@ def load_reference_texts(
 
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
-    request_id = request.headers.get("X-Request-ID") or str(uuid4())
+    supplied_request_id = request.headers.get("X-Request-ID", "")
+    request_id = (
+        supplied_request_id
+        if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", supplied_request_id)
+        else str(uuid4())
+    )
     request.state.request_id = request_id
-    response = await call_next(request)
+
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            request_size = int(content_length)
+        except ValueError:
+            request_size = MAX_REQUEST_BYTES + 1
+        if request_size > MAX_REQUEST_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "請求內容過大。", "request_id": request_id},
+                headers={"X-Request-ID": request_id, "Cache-Control": "no-store"},
+            )
+
+    if request.method in {"POST", "PUT", "PATCH"}:
+        body = await request.body()
+        if len(body) > MAX_REQUEST_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "請求內容過大。", "request_id": request_id},
+                headers={"X-Request-ID": request_id, "Cache-Control": "no-store"},
+            )
+
+    if request.method == "POST" and request.url.path == "/v1/references/search":
+        token = search_timing.request_id.set(request_id)
+        try:
+            with search_timing.stage("api_until_response_headers"):
+                response = await call_next(request)
+            logger_status = logging.getLogger("mumucare.search_timing")
+            logger_status.info("search_response request_id=%s status=%s", request_id, response.status_code)
+        finally:
+            search_timing.request_id.reset(token)
+    else:
+        response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if IS_PRODUCTION:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 
@@ -318,29 +432,26 @@ async def handle_unexpected_error(request: Request, error: Exception):
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"service": "Mumucare ISP AI API", "docs": "/docs"}
+    return {"service": "Mumucare ISP AI API"}
 
 
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
-    return {
-        "status": "ok",
-        "mode": "live",
-        "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
-        "chroma_available": os.path.isdir(core.DBDIR),
-        "api_key_required": bool(API_KEY),
-        "model": core.OPENAI_MODEL,
-    }
+    return {"status": "ok"}
 
 
 @app.get(
     "/v1/service-users",
     response_model=ServiceUserListResponse,
-    dependencies=[Depends(verify_api_key)],
 )
-def list_service_users(request: Request) -> ServiceUserListResponse:
+def list_service_users(
+    request: Request,
+    employee: AuthenticatedEmployee = Depends(verify_employee),
+) -> ServiceUserListResponse:
     try:
-        service_users = get_firestore_repository().list_enrolled_students()
+        service_users = get_firestore_repository(employee).list_enrolled_students()
+    except HTTPException:
+        raise
     except Exception as error:
         raise service_unavailable("服務使用者名單讀取", error) from error
     return ServiceUserListResponse(
@@ -352,16 +463,18 @@ def list_service_users(request: Request) -> ServiceUserListResponse:
 @app.post(
     "/v1/isps",
     response_model=AdultIspListResponse,
-    dependencies=[Depends(verify_api_key)],
 )
 def list_adult_isps(
     request: Request,
     payload: StudentIdentity,
+    employee: AuthenticatedEmployee = Depends(verify_employee),
 ) -> AdultIspListResponse:
     try:
-        basic_info, isps = get_firestore_repository().list_adult_isps(
+        basic_info, isps = get_firestore_repository(employee).list_adult_isps(
             payload.student_id
         )
+    except HTTPException:
+        raise
     except EnrollmentNotFoundError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
     except StudentNotFoundError as error:
@@ -378,13 +491,13 @@ def list_adult_isps(
 @app.post(
     "/v1/context",
     response_model=AdultIspContextResponse,
-    dependencies=[Depends(verify_api_key)],
 )
 def get_adult_isp_context(
     request: Request,
     payload: AdultIspIdentity,
+    employee: AuthenticatedEmployee = Depends(verify_employee),
 ) -> AdultIspContextResponse:
-    context = load_adult_context(payload)
+    context = load_adult_context(payload, employee)
     return AdultIspContextResponse(
         request_id=get_request_id(request),
         **context,
@@ -394,13 +507,13 @@ def get_adult_isp_context(
 @app.post(
     "/v1/long-term-goals",
     response_model=LongTermGoalResponse,
-    dependencies=[Depends(verify_api_key)],
 )
 def generate_long_term_goals(
     request: Request,
     payload: LongTermGoalRequest,
+    employee: AuthenticatedEmployee = Depends(verify_employee),
 ) -> LongTermGoalResponse:
-    context = load_adult_context(payload)
+    context = load_adult_context(payload, employee)
     if not any(
         value.strip()
         for value in (
@@ -437,13 +550,13 @@ def generate_long_term_goals(
 @app.post(
     "/v1/references/search",
     response_model=ReferenceSearchResponse,
-    dependencies=[Depends(verify_api_key)],
 )
 def search_references(
     request: Request,
     payload: ReferenceSearchRequest,
+    employee: AuthenticatedEmployee = Depends(verify_employee),
 ) -> ReferenceSearchResponse:
-    context = load_adult_context(payload)
+    context = load_adult_context(payload, employee)
     basic_info = context["basic_info"]
     selected_goal = deidentify(payload.selected_long_goal)
 
@@ -481,6 +594,17 @@ def search_references(
     except Exception as error:
         raise service_unavailable("RAG 參考資料搜尋", error) from error
 
+    return build_reference_search_response(request, short_queries, strategy_queries,
+                                           short_documents, strategy_documents)
+
+
+@search_timing.timed("response_build_and_deidentification")
+def build_reference_search_response(request, short_queries, strategy_queries,
+                                    short_documents, strategy_documents):
+    logging.getLogger("mumucare.search_timing").info(
+        "search_results request_id=%s short_term_count=%d strategy_count=%d",
+        get_request_id(request), len(short_documents), len(strategy_documents),
+    )
     return ReferenceSearchResponse(
         request_id=get_request_id(request),
         search_direction=[
@@ -501,13 +625,13 @@ def search_references(
 @app.post(
     "/v1/goals/generate",
     response_model=FinalGenerationResponse,
-    dependencies=[Depends(verify_api_key)],
 )
 def generate_final_result(
     request: Request,
     payload: FinalGenerationRequest,
+    employee: AuthenticatedEmployee = Depends(verify_employee),
 ) -> FinalGenerationResponse:
-    context = load_adult_context(payload)
+    context = load_adult_context(payload, employee)
     short_types = {"兒童短程目標"} if payload.service_type == "兒童" else {"短程目標"}
     try:
         short_references = load_reference_texts(
@@ -564,13 +688,13 @@ def generate_final_result(
 @app.post(
     "/v1/goals/refine",
     response_model=RefineGenerationResponse,
-    dependencies=[Depends(verify_api_key)],
 )
 def refine_final_result(
     request: Request,
     payload: RefineGenerationRequest,
+    employee: AuthenticatedEmployee = Depends(verify_employee),
 ) -> RefineGenerationResponse:
-    load_adult_context(payload)
+    load_adult_context(payload, employee)
     original = deidentify(payload.original)
     refine_prompt = deidentify(payload.refine_prompt)
 

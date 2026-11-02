@@ -1,70 +1,86 @@
 #!/usr/bin/env bash
-# ============================================================
-# Cloud Run 部署腳本
-# 費用最精簡策略：
-#   - min-instances=0  → 無人使用時縮到 0，不計費
-#   - max-instances=2  → 少數人同時使用時可開第 2 台，閒置仍縮到 0
-#   - CPU 只在處理 request 時計費（Cloud Run 預設行為）
-# ============================================================
 set -euo pipefail
 
-# -------- 必填：請填入你的 GCP 專案 ID --------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
-if [ -z "$PROJECT_ID" ]; then
-  echo "❌ 請設定 GCP_PROJECT_ID 環境變數，或先執行 gcloud config set project <PROJECT_ID>"
+REGION="${GCP_REGION:-asia-east1}"
+SERVICE_NAME="${CLOUD_RUN_SERVICE_NAME:-mumucare-llm}"
+ARTIFACT_REPOSITORY="${ARTIFACT_REPOSITORY:-mumucare-llm}"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/${SERVICE_NAME}"
+FIRESTORE_PROJECT_ID="${FIRESTORE_PROJECT_ID:-mumu-care}"
+RUNTIME_SERVICE_ACCOUNT_NAME="${RUNTIME_SERVICE_ACCOUNT_NAME:-mumucare-llm-runtime}"
+RUNTIME_SERVICE_ACCOUNT_EMAIL="${RUNTIME_SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+OPENAI_SECRET_NAME="${OPENAI_SECRET_NAME:-mumucare-openai-api-key}"
+FIREBASE_AUTH_PROJECT_ID="${FIREBASE_AUTH_PROJECT_ID:-mumu-care}"
+EMPLOYEE_EMAIL_DOMAIN="${EMPLOYEE_EMAIL_DOMAIN:-maria.org.tw}"
+CORS_ALLOW_ORIGINS="${CORS_ALLOW_ORIGINS:-https://mumu-care.web.app,https://mumu-care.firebaseapp.com,https://mumu-care--jacky-lryp8mk8.web.app}"
+export RERANKER_ENABLED="${RERANKER_ENABLED:-false}"
+
+if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
+  echo "錯誤：請設定 GCP_PROJECT_ID，或先執行 gcloud config set project PROJECT_ID。" >&2
   exit 1
 fi
 
-# -------- 設定 --------
-SERVICE_NAME="mumucare-llm"
-REGION="asia-east1"
-IMAGE="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
+if [[ -n "${CORS_ALLOW_ORIGINS:-}" ]]; then
+  IFS=',' read -ra ORIGINS <<< "$CORS_ALLOW_ORIGINS"
+  for origin in "${ORIGINS[@]}"; do
+    trimmed="${origin#"${origin%%[![:space:]]*}"}"
+    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+    if [[ "$trimmed" != https://* || "$trimmed" == "*" ]]; then
+      echo "錯誤：正式環境的 CORS_ALLOW_ORIGINS 只能包含明確的 HTTPS 網址。" >&2
+      exit 1
+    fi
+  done
+fi
 
-# 若未設定 OPENAI_API_KEY，自動從 .env 讀取
-if [ -z "${OPENAI_API_KEY:-}" ]; then
-  if [ -f ".env" ]; then
-    export $(grep -v '^#' .env | grep OPENAI_API_KEY | xargs)
+if ! gcloud iam service-accounts describe "$RUNTIME_SERVICE_ACCOUNT_EMAIL" \
+  --project "$PROJECT_ID" >/dev/null 2>&1; then
+  echo "錯誤：找不到執行服務帳號。請先執行 ./setup_cloud_security.sh。" >&2
+  exit 1
+fi
+
+for secret_name in "$OPENAI_SECRET_NAME"; do
+  if ! gcloud secrets describe "$secret_name" --project "$PROJECT_ID" >/dev/null 2>&1; then
+    echo "錯誤：找不到 Secret Manager secret：${secret_name}。請先執行 ./setup_cloud_security.sh。" >&2
+    exit 1
   fi
-fi
+done
 
-if [ -z "${OPENAI_API_KEY:-}" ]; then
-  echo "❌ 找不到 OPENAI_API_KEY，請在 .env 檔案中設定或手動 export"
-  exit 1
-fi
+python3 validate_chroma.py
 
-echo "========================================"
-echo "  PROJECT : $PROJECT_ID"
-echo "  SERVICE : $SERVICE_NAME"
-echo "  REGION  : $REGION"
-echo "  IMAGE   : $IMAGE"
-echo "========================================"
+echo "Building ${IMAGE} in ${REGION} ..."
+gcloud builds submit --region "$REGION" \
+  --default-buckets-behavior regional-user-owned-bucket \
+  --config cloudbuild-api.yaml \
+  --substitutions "_IMAGE=${IMAGE}" --project "$PROJECT_ID"
 
-# -------- 1. Build & push --------
-echo ""
-echo "▶ 建置 Docker image 並推送至 GCR..."
-gcloud builds submit \
-  --tag "$IMAGE" \
-  --project "$PROJECT_ID"
-
-# -------- 2. Deploy --------
-echo ""
-echo "▶ 部署至 Cloud Run..."
+echo "Deploying ${SERVICE_NAME} to ${REGION} ..."
+# Browser requests are authenticated and authorized using Firebase employee ID tokens.
 gcloud run deploy "$SERVICE_NAME" \
   --image "$IMAGE" \
   --region "$REGION" \
-  --project "$PROJECT_ID" \
   --platform managed \
   --allow-unauthenticated \
-  --min-instances 0 \
-  --max-instances 2 \
-  --memory 4Gi \
+  --service-account "$RUNTIME_SERVICE_ACCOUNT_EMAIL" \
+  --execution-environment gen2 \
   --cpu 2 \
+  --memory 4Gi \
+  --cpu-throttling \
+  --min-instances 0 \
+  --max-instances 5 \
+  --concurrency 1 \
   --timeout 300 \
-  --set-env-vars "OPENAI_API_KEY=${OPENAI_API_KEY}"
+  --set-secrets "OPENAI_API_KEY=${OPENAI_SECRET_NAME}:latest" \
+  --set-env-vars "^@^APP_ENV=production@FIRESTORE_PROJECT_ID=${FIRESTORE_PROJECT_ID}@FIREBASE_AUTH_PROJECT_ID=${FIREBASE_AUTH_PROJECT_ID}@EMPLOYEE_EMAIL_DOMAIN=${EMPLOYEE_EMAIL_DOMAIN}@CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}@MAX_REQUEST_BYTES=262144@RATE_LIMIT_PER_MINUTE=30@RERANKER_ENABLED=${RERANKER_ENABLED}" \
+  --project "$PROJECT_ID"
 
-echo ""
-echo "✅ 部署完成！"
-gcloud run services describe "$SERVICE_NAME" \
-  --region "$REGION" \
-  --project "$PROJECT_ID" \
-  --format "value(status.url)"
+echo "部署完成。前端請使用 Authorization: Bearer <Firebase ID Token>。"

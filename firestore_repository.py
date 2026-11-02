@@ -122,20 +122,27 @@ class AdultIspContext:
 
 
 @lru_cache(maxsize=1)
-def get_firestore_client():
+def get_firebase_app():
     try:
         app = firebase_admin.get_app()
     except ValueError:
+        project_id = os.getenv("FIRESTORE_PROJECT_ID", "").strip()
+        options = {"projectId": project_id} if project_id else None
         credential_path = os.getenv("FIREBASE_CREDENTIALS", "").strip()
         if credential_path:
             key_path = Path(credential_path).expanduser().resolve()
             if not key_path.is_file():
                 raise FileNotFoundError("找不到 FIREBASE_CREDENTIALS 指定的金鑰。")
-            app = firebase_admin.initialize_app(credentials.Certificate(key_path))
+            app = firebase_admin.initialize_app(credentials.Certificate(key_path), options=options)
         else:
             # Cloud Run uses its service account through Application Default Credentials.
-            app = firebase_admin.initialize_app()
-    return firestore.client(app=app)
+            app = firebase_admin.initialize_app(options=options)
+    return app
+
+
+@lru_cache(maxsize=1)
+def get_firestore_client():
+    return firestore.client(app=get_firebase_app())
 
 
 def html_to_plain_text(value) -> str:
@@ -210,8 +217,18 @@ def build_summary_source_title(
 
 
 class FirestoreRepository:
-    def __init__(self, database=None):
+    def __init__(self, database=None, allowed_service_ids: frozenset[str] | None = None):
         self.database = database or get_firestore_client()
+        self.allowed_service_ids = allowed_service_ids
+
+    def service_is_allowed(self, service: dict) -> bool:
+        return (
+            service.get("name") in ALLOWED_SERVICE_NAMES
+            and (
+                self.allowed_service_ids is None
+                or service.get("id") in self.allowed_service_ids
+            )
+        )
 
     def list_enrolled_students(self) -> list[dict[str, str]]:
         snapshots = (
@@ -227,7 +244,7 @@ class FirestoreRepository:
             student = case_data.get("student") or {}
             if not isinstance(service, dict) or not isinstance(student, dict):
                 continue
-            if service.get("name") not in ALLOWED_SERVICE_NAMES:
+            if not self.service_is_allowed(service):
                 continue
             student_id = str(student.get("id") or "").strip()
             student_name = str(student.get("name") or "").strip()
@@ -253,7 +270,7 @@ class FirestoreRepository:
             if (
                 case_data.get("status") == "enrollment"
                 and isinstance(service, dict)
-                and service.get("name") in ALLOWED_SERVICE_NAMES
+                and self.service_is_allowed(service)
             ):
                 return
         raise EnrollmentNotFoundError("服務使用者不符合目前在案與服務單位條件。")
