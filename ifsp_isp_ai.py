@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import unicodedata
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -320,6 +321,12 @@ def extract_content_only(text: str) -> str:
     return re.sub(r"\s+", " ", value)
 
 
+def reference_text_key(text: str) -> str:
+    value = unicodedata.normalize("NFKC", text)
+    return "".join(char for char in value
+                   if not char.isspace() and not unicodedata.category(char).startswith("P"))
+
+
 def extract_icf_disability_type(text: str) -> str:
     value = str(text or "").strip()
     match = re.search(r"障礙類別\s*[:：]?\s*([0-9.\s、,，]+)\s*類?", value)
@@ -457,7 +464,11 @@ def retrieve_candidates(
     topk: int = 6,
     service_type: str = "",
     plan: dict[str, Any] | None = None,
+    display_text=None,
+    candidate_k: int | None = None,
 ) -> tuple[list[str], list[Document]]:
+    candidate_k = candidate_k or topk
+    display_text = display_text or (lambda doc: replace_name_with_stars(extract_content_only(doc.page_content)))
     long_goal_block = "\n".join(f"{i + 1}. {goal}" for i, goal in enumerate(long_goal_text) if str(goal).strip())
     target_disability_type = extract_icf_disability_type(basic_info)
     target_disability_level = extract_disability_level(basic_info)
@@ -501,7 +512,7 @@ def retrieve_candidates(
     for query_index, (tag, query) in enumerate(clean_query_items, 1):
         with search_timing.stage("retrieval_query", query_index=query_index,
                                  query_count=len(clean_query_items), reference_type=typ):
-            docs = retrieve_hybrid_with_meta(domain=domain, typ=typ, query=query, topk=topk)
+            docs = retrieve_hybrid_with_meta(domain=domain, typ=typ, query=query, topk=candidate_k)
         for doc in docs:
             semantic_score = doc.metadata.get("semantic_score", 0)
             final_score = semantic_score * 0.4 * tag_weight.get(tag, 1.0)
@@ -538,8 +549,21 @@ def retrieve_candidates(
         doc_map[key]["matched_tags"].append(doc.metadata.get("matched_tag", ""))
 
     sorted_docs = sorted(doc_map.values(), key=lambda item: item["score"], reverse=True)
+    unique_items = []
+    seen_texts = set()
+    for item in sorted_docs:
+        key = reference_text_key(display_text(item["doc"]))
+        if key and key not in seen_texts:
+            seen_texts.add(key)
+            unique_items.append(item)
+    # Expand only when duplicate content crowds out distinct references.
+    limit = max(24, topk * 4)
+    if len(unique_items) < topk and candidate_k < limit and sorted_docs:
+        return retrieve_candidates(domain, typ, basic_info, long_goal_text, topk,
+                                   service_type, plan, display_text,
+                                   min(candidate_k * 2, limit))
     # Bound CPU inference and judge each unique candidate against the full goal context.
-    shortlist = sorted_docs[:max(20, topk)]
+    shortlist = unique_items[:max(20, topk)]
     stage_name = "consolidated_rerank" if RERANKER_ENABLED else "reranker_disabled"
     with search_timing.stage(stage_name, reference_type=typ,
                              unique_count=len(doc_map), candidate_count=len(shortlist)):

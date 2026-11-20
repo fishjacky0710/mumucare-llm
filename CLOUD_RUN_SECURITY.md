@@ -40,7 +40,7 @@ chmod +x setup_cloud_security.sh deploy.sh
 
 Cloud Build、Artifact Registry 與 Cloud Run 使用同一個 `GCP_REGION`，預設為 `asia-east1`。部署腳本明確指定建置區域，並使用 regional user-owned buckets，讓後續建置的原始碼暫存與日誌儲存桶也使用該區域；既有 global 建置記錄與舊儲存桶不會搬移或刪除。後續建置請使用 `./deploy.sh`，手動呼叫 `gcloud builds submit` 時也需帶上相同區域與儲存桶參數。
 
-部署腳本預設允許 `https://mumu-care.web.app`、`https://mumu-care.firebaseapp.com` 與測試網址 `https://mumu-care--jacky-lryp8mk8.web.app`。其他正式或測試網域需明確配置 `CORS_ALLOW_ORIGINS`，不使用萬用來源。
+部署腳本預設允許 `https://mumu-care.web.app`、`https://mumu-care.firebaseapp.com` 與測試網址 `https://mumu-care--jacky-lryp8mk8.web.app`、`https://mumu-care--jackyai-qhw15nbd.web.app`。其他正式或測試網域需明確配置 `CORS_ALLOW_ORIGINS`，不使用萬用來源。
 
 ## 金鑰輪替
 

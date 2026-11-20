@@ -22,7 +22,7 @@ RUNTIME_SERVICE_ACCOUNT_EMAIL="${RUNTIME_SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam
 OPENAI_SECRET_NAME="${OPENAI_SECRET_NAME:-mumucare-openai-api-key}"
 FIREBASE_AUTH_PROJECT_ID="${FIREBASE_AUTH_PROJECT_ID:-mumu-care}"
 EMPLOYEE_EMAIL_DOMAIN="${EMPLOYEE_EMAIL_DOMAIN:-maria.org.tw}"
-CORS_ALLOW_ORIGINS="${CORS_ALLOW_ORIGINS:-https://mumu-care.web.app,https://mumu-care.firebaseapp.com,https://mumu-care--jacky-lryp8mk8.web.app}"
+CORS_ALLOW_ORIGINS="${CORS_ALLOW_ORIGINS:-https://mumu-care.web.app,https://mumu-care.firebaseapp.com,https://mumu-care--jacky-lryp8mk8.web.app,https://mumu-care--jackyai-qhw15nbd.web.app}"
 export RERANKER_ENABLED="${RERANKER_ENABLED:-false}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then

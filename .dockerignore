@@ -32,6 +32,7 @@ download_model.py
 !ifsp_isp_ai.py
 !validate_chroma.py
 !search_timing.py
+!usage_stats.py
 !firestore_repository.py
 !employee_auth.py
 !prompt.py

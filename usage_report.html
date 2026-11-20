@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
+<title>AI 系統使用量報表</title>
+<style>
+*{box-sizing:border-box}body{margin:0;color:#202624;background:#fff;font:15px/1.6 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:28px 20px}h1{font-size:26px;margin:0 0 20px}h2{font-size:18px;margin:24px 0 12px}header{border-bottom:1px solid #dce2df;padding-bottom:20px}.controls{display:flex;gap:16px;align-items:end;flex-wrap:wrap}label{display:grid;gap:5px;color:#49554e;font-size:13px}input,button{font:inherit;padding:8px;border:1px solid #b9c6be;border-radius:5px;background:white;color:#202624}button{cursor:pointer}input[type=file]{max-width:100%;width:330px}.status{color:#58665e;font-size:13px;margin-top:12px;overflow-wrap:anywhere}.error{color:#b42318}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:22px}.metric{border:1px solid #dce2df;border-radius:6px;padding:15px}.value{font-size:28px;color:#146340;font-weight:650}.metric span{font-size:13px;color:#58665e}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:10px;text-align:right;border-bottom:1px solid #e2e8e4;white-space:nowrap}th:first-child,td:first-child{text-align:left}th{color:#53645a;font-weight:500;background:#f5f8f6}.table-wrap{overflow:auto}.charts{display:grid;grid-template-columns:1fr 1fr;gap:32px}.bar-row{margin:12px 0}.bar-label{display:flex;justify-content:space-between;gap:10px;font-size:13px}.track{height:16px;background:#eef3f0;border-radius:3px;overflow:hidden;margin-top:4px}.fill{height:100%;background:#23865c}.people .fill{background:#3979ae}p.note{font-size:13px;color:#647069;margin:16px 0}#empty{padding:55px 0;color:#647069;text-align:center}footer{border-top:1px solid #dce2df;margin-top:28px;padding-top:12px;font-size:12px;color:#647069}@media(max-width:650px){main{padding:20px 12px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.charts{grid-template-columns:1fr;gap:0}.value{font-size:24px}h1{font-size:22px}}
+</style>
+<main>
+<header><h1>AI 系統使用量報表</h1><div class="controls">
+<label>日誌 JSON<input type="file" id="file" accept=".json,application/json"></label>
+<label>開始日期（台北）<input type="date" id="from"></label>
+<label>結束日期（台北）<input type="date" id="to"></label>
+<button id="reset" type="button">全部日期</button>
+</div><div id="status" class="status" role="status">尚未匯入資料</div></header>
+<div id="empty">選擇 Logs Explorer 下載的 JSON 檔案</div>
+<section id="report" hidden>
+<div class="metrics">
+<div class="metric"><div id="requests" class="value">0</div><span>已驗證操作次數</span></div>
+<div class="metric"><div id="users" class="value">0</div><span>不重複使用人數</span></div>
+<div class="metric"><div id="success" class="value">—</div><span>後端成功率</span></div>
+<div class="metric"><div id="p95" class="value">—</div><span>P95 處理時間（秒）</span></div>
+</div>
+<div class="charts"><section><h2>各功能操作次數</h2><div id="operation-chart"></div></section><section class="people"><h2>各功能使用人數</h2><div id="people-chart"></div></section></div>
+<h2>功能明細</h2><div class="table-wrap"><table><thead><tr><th>功能</th><th>次數</th><th>人數</th><th>成功</th><th>失敗</th><th>平均秒數</th></tr></thead><tbody id="operations"></tbody></table></div>
+<h2>每日使用量</h2><div id="daily-chart"></div>
+<div class="table-wrap"><table><thead><tr><th>日期（台北）</th><th>次數</th><th>人數</th><th>成功</th><th>失敗</th></tr></thead><tbody id="days"></tbody></table></div>
+<p id="excluded" class="note"></p>
+<p class="note">僅統計匯入檔案內已完成的操作。跨功能、跨日期的人數不可直接相加。成功率為後端應用程式結果；Cloud Run 逾時請另查請求日誌。報表不包含結果採用率或 token 費用。</p>
+</section>
+<footer>僅在本機處理，不上傳檔案、不使用外部服務，也不保存到瀏覽器儲存空間。匯入檔案若下載不完整，報表也只涵蓋該部分。</footer>
+</main>
+<script src="usage_report.js"></script>
+</html>

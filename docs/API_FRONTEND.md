@@ -48,7 +48,7 @@ mumucare-llm-runtime@mumucare-llm.iam.gserviceaccount.com
 
 Firestore 所需 `roles/datastore.viewer` 已授權。新版撤銷／停用檢查另需在 `mumu-care` 授予 `roles/firebaseauth.viewer`；未授權時，有效 Token 的登入驗證可能回傳 503。
 
-CORS allowlist 為 `https://mumu-care.web.app`、`https://mumu-care.firebaseapp.com` 與測試網址 `https://mumu-care--jacky-lryp8mk8.web.app`。前端可以直接呼叫 Cloud Run，不需要 Gateway。
+CORS allowlist 為 `https://mumu-care.web.app`、`https://mumu-care.firebaseapp.com` 與測試網址 `https://mumu-care--jacky-lryp8mk8.web.app`、`https://mumu-care--jackyai-qhw15nbd.web.app`。前端可以直接呼叫 Cloud Run，不需要 Gateway。
 
 ## 2. 驗證與前端連線方式
 

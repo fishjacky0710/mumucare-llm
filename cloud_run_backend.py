@@ -34,6 +34,7 @@ from firestore_repository import (
 )
 import ifsp_isp_ai as core
 import search_timing
+import usage_stats
 
 
 logger = logging.getLogger("mumucare.api")
@@ -293,8 +294,12 @@ def load_adult_context(payload: AdultIspIdentity, employee: AuthenticatedEmploye
     }
 
 
+def reference_display_text(document):
+    return deidentify(core.extract_content_only(document.page_content))
+
+
 def reference_candidate(document, kind: str) -> ReferenceCandidate:
-    text = deidentify(core.extract_content_only(document.page_content))
+    text = reference_display_text(document)
     raw_score = float(document.metadata.get("final_score", 0))
     score = max(min(raw_score / 5, 1.0), 0.0)
     return ReferenceCandidate(
@@ -393,6 +398,24 @@ async def add_request_id(request: Request, call_next):
     if IS_PRODUCTION:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+
+
+@app.middleware("http")
+async def record_ai_usage(request: Request, call_next):
+    operation = usage_stats.OPERATIONS.get(request.url.path) if request.method == "POST" else None
+    if operation is None:
+        return await call_next(request)
+    started = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        employee = getattr(request.state, "employee", None)
+        usage_stats.record(operation, get_request_id(request),
+                           getattr(employee, "uid", None), status,
+                           (time.perf_counter() - started) * 1000)
 
 
 def get_request_id(request: Request) -> str:
@@ -576,6 +599,7 @@ def search_references(
             payload.top_k,
             payload.service_type,
             query_plan,
+            display_text=reference_display_text,
         )
         strategy_queries: list[str] = []
         strategy_documents = []
@@ -588,6 +612,7 @@ def search_references(
                 payload.top_k,
                 payload.service_type,
                 query_plan,
+                display_text=reference_display_text,
             )
     except HTTPException:
         raise
