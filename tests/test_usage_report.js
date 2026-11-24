@@ -12,8 +12,8 @@ const report = summarizeReport(rows);
 assert.equal(report.requests, 3);
 assert.equal(report.users, 2);
 assert.equal(report.excluded, 1);
-assert.equal(report.operations[1].users, 1);
-assert.equal(report.operations[1].requests, 2);
+assert.equal(report.operations.find((item) => item.name === "搜尋參考資料").users, 1);
+assert.equal(report.operations.find((item) => item.name === "搜尋參考資料").requests, 2);
 assert.equal(report.failed, 1);
 assert.equal(report.p95, 1);
 assert.equal(report.days[0].users, 2);
@@ -24,3 +24,6 @@ assert.throws(() => summarizeReport({}), /JSON/);
 assert.throws(() => summarizeReport([], "2026-11-22", "2026-11-20"), /開始日期/);
 assert.equal(summarizeReport([{ jsonPayload: { event: "ai_usage" } }]).invalid, 1);
 console.log("Local report tests passed");
+
+const refined = summarizeReport([entry("refine-1", "u1", "long_term_refine")]);
+assert.equal(refined.operations.find((item) => item.name === "調整服務需求").requests, 1);

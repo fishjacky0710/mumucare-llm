@@ -13,7 +13,7 @@ import re
 import time
 from collections import deque
 from threading import Lock
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import uuid4
 
 import uvicorn
@@ -35,6 +35,7 @@ from firestore_repository import (
 import ifsp_isp_ai as core
 import search_timing
 import usage_stats
+from long_term_refinement import refine_long_term_goals
 
 
 logger = logging.getLogger("mumucare.api")
@@ -98,6 +99,12 @@ class AdultIspIdentity(StudentIdentity):
 class LongTermGoalRequest(AdultIspIdentity):
     custom_important_to: list[str] = Field(default_factory=list, max_length=10)
     custom_important_for: list[str] = Field(default_factory=list, max_length=10)
+
+
+class RefineLongTermGoalRequest(AdultIspIdentity):
+    original_important_to: list[Annotated[str, Field(min_length=1, max_length=6000)]] = Field(max_length=10)
+    original_important_for: list[Annotated[str, Field(min_length=1, max_length=6000)]] = Field(max_length=10)
+    refine_prompt: str = Field(min_length=1, max_length=5000)
 
 
 class LongTermGoalResponse(BaseModel):
@@ -567,6 +574,39 @@ def generate_long_term_goals(
         request_id=get_request_id(request),
         important_to=[deidentify(goal) for goal in result.important_to],
         important_for=[deidentify(goal) for goal in result.important_for],
+    )
+
+
+@app.post("/v1/long-term-goals/refine", response_model=LongTermGoalResponse)
+def refine_service_needs(
+    request: Request,
+    payload: RefineLongTermGoalRequest,
+    employee: AuthenticatedEmployee = Depends(verify_employee),
+) -> LongTermGoalResponse:
+    context = load_adult_context(payload, employee)
+    if not payload.original_important_to and not payload.original_important_for:
+        raise HTTPException(status_code=400, detail="請提供目前的服務需求內容。")
+    if not payload.refine_prompt.strip() or any(
+        not item.strip() for item in payload.original_important_to + payload.original_important_for
+    ):
+        raise HTTPException(status_code=400, detail="服務需求與補充指示不可為空白。")
+    try:
+        result = refine_long_term_goals(
+            domain=payload.domain,
+            context=context,
+            important_to=[deidentify(item) for item in payload.original_important_to],
+            important_for=[deidentify(item) for item in payload.original_important_for],
+            instruction=deidentify(payload.refine_prompt),
+            invoke=lambda messages: core.get_llm().invoke(messages).content,
+        )
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise service_unavailable("服務需求調整", error) from error
+    return LongTermGoalResponse(
+        request_id=get_request_id(request),
+        important_to=[deidentify(item) for item in result["important_to"]],
+        important_for=[deidentify(item) for item in result["important_for"]],
     )
 
 

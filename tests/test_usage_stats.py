@@ -53,7 +53,8 @@ class UsageStatsTests(unittest.TestCase):
 
     def test_empty_period_has_zero_counts_for_all_operations(self):
         result = usage_stats.summarize([])
-        self.assertEqual(len(result["operation_stats"]), 4)
+        self.assertEqual(set(result["operation_stats"]), set(usage_stats.OPERATIONS.values()))
+        self.assertIn("long_term_refine", result["operation_stats"])
         self.assertTrue(all(stats["unique_employees"] == 0
                             for stats in result["operation_stats"].values()))
     def test_unauthenticated_requests_excluded_from_usage(self):

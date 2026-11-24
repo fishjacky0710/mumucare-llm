@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 OPERATIONS = {
     "/v1/long-term-goals": "long_term_generate",
+    "/v1/long-term-goals/refine": "long_term_refine",
     "/v1/references/search": "reference_search",
     "/v1/goals/generate": "goals_generate",
     "/v1/goals/refine": "goals_refine",

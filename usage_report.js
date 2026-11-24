@@ -2,6 +2,7 @@
 
 const OPERATION_NAMES = {
   long_term_generate: "生成長程目標",
+  long_term_refine: "調整服務需求",
   reference_search: "搜尋參考資料",
   goals_generate: "生成短程目標與策略",
   goals_refine: "重新生成",
