@@ -233,11 +233,7 @@ def verify_employee(
 
 def deidentify(text: str, extra_names: tuple[str, ...] = ()) -> str:
     value = core.replace_name_with_stars(text)
-    names = {str(name).strip() for name in extra_names if str(name).strip()}
-    for name in sorted(names, key=len, reverse=True):
-        value = value.replace(name, "**")
-        if len(name) >= 2:
-            value = re.sub(re.escape(name[1:]), "**", value)
+    value = core.mask_known_names(value, extra_names)
     for pattern, replacement in DIRECT_IDENTIFIER_PATTERNS:
         value = pattern.sub(replacement, value)
     return value

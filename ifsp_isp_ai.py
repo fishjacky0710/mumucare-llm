@@ -187,6 +187,23 @@ def get_full_names() -> tuple[str, ...]:
     return tuple(df["姓名"].dropna().astype(str).tolist())
 
 
+def mask_known_names(text: str, names) -> str:
+    full_names = {str(name).strip() for name in names if str(name).strip()}
+    value = text
+    for name in sorted(full_names, key=lambda item: (-len(item), item)):
+        value = value.replace(name, "**")
+    # A given name embedded in ordinary Chinese text is not sufficient evidence.
+    for tail in sorted({name[1:] for name in full_names if len(name) >= 3},
+                       key=lambda item: (-len(item), item)):
+        escaped = re.escape(tail)
+        value = re.sub(rf"(?<![\w]){escaped}(?![\w])", "**", value)
+        value = re.sub(
+            rf"((?:姓名|學生姓名|服務對象姓名|服務使用者姓名)\s*[:：]\s*){escaped}",
+            lambda match: match.group(1) + "**", value,
+        )
+    return value
+
+
 def replace_name_with_stars(text: Any) -> str:
     if text is None:
         value = ""
@@ -195,17 +212,7 @@ def replace_name_with_stars(text: Any) -> str:
     else:
         value = str(text)
 
-    replaced = value
-    full_names = get_full_names()
-    name_lookup = {name[1:]: name for name in full_names if isinstance(name, str) and len(name) >= 2}
-
-    for full_name in full_names:
-        if full_name and full_name in replaced:
-            replaced = replaced.replace(full_name, "**")
-
-    for name_tail in name_lookup:
-        replaced = re.sub(re.escape(name_tail), "**", replaced)
-    return replaced
+    return mask_known_names(value, get_full_names())
 
 
 def parse_goal_lines(text: str) -> list[str]:

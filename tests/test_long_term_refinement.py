@@ -56,6 +56,7 @@ class EndpointTests(unittest.TestCase):
         # Import the actual routes with model/retrieval dependencies replaced; no cloud calls.
         core = Mock()
         core.replace_name_with_stars.side_effect = lambda value: value
+        core.mask_known_names.side_effect = lambda value, names: value
         path = Path(__file__).resolve().parents[1] / "cloud_run_backend.py"
         spec = importlib.util.spec_from_file_location("backend_refinement_test", path)
         cls.backend = importlib.util.module_from_spec(spec)
