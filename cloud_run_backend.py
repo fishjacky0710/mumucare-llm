@@ -728,6 +728,13 @@ def generate_final_result(
                 structured_text,
                 short_context,
             )
+        elif strategy_context:
+            messages = core.build_strategy_only_prompt(
+                payload.service_type,
+                payload.domain,
+                structured_text,
+                strategy_context,
+            )
         else:
             messages = core.build_case3_prompt(
                 payload.service_type,

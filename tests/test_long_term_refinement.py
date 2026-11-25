@@ -103,3 +103,30 @@ class EndpointTests(unittest.TestCase):
     def test_oversized_prompt_rejected(self):
         response = self.client.post('/v1/long-term-goals/refine', json={**self.payload, 'refine_prompt': 'x' * 5001})
         self.assertEqual(response.status_code, 422)
+
+    def test_reference_generation_all_four_combinations(self):
+        for short, strategy, builder in [([], [], "build_case3_prompt"),
+                (["short"], [], "build_case1_prompt"), ([], ["strategy"], "build_strategy_only_prompt"),
+                (["short"], ["strategy"], "build_case2_prompt")]:
+            with self.subTest(short=short, strategy=strategy), patch.object(
+                self.backend, "load_adult_context", return_value={"basic_info": "個案資訊"}
+            ), patch.object(self.backend, "load_reference_texts", side_effect=lambda ids, *_: ids):
+                core = self.backend.core
+                core.reset_mock()
+                core.build_selected_context.side_effect = lambda values: "\n".join(values)
+                core.get_llm.return_value.invoke.return_value.content = "生成結果"
+                response = self.client.post('/v1/goals/generate', json={
+                    "studentId": "s", "ispId": "i", "domain": "身體福祉", "selected_long_goal": "長程目標",
+                    "selected_short_reference_ids": short, "selected_strategy_reference_ids": strategy})
+                self.assertEqual(response.status_code, 200, response.text)
+                getattr(core, builder).assert_called_once()
+                if strategy:
+                    self.assertEqual(getattr(core, builder).call_args.args[-1], "strategy")
+
+    def test_strategy_only_prompt_includes_reference_without_no_selection_claim(self):
+        import prompt
+        messages = prompt.build_case3_prompt("身體福祉", "個案資訊與長程目標", "安排可選擇的活動")
+        text = "\n".join(content for _, content in messages)
+        self.assertIn("安排可選擇的活動", text)
+        self.assertIn("使用者僅勾選策略參考", text)
+        self.assertNotIn("使用者沒有勾選任何短程目標與策略", text)

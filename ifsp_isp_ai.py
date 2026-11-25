@@ -672,6 +672,13 @@ def build_case3_prompt(service_type: str, domain: str, structured_text: str):
     )
 
 
+def build_strategy_only_prompt(service_type: str, domain: str, structured_text: str, strategy_context: str):
+    return add_service_type_rules(
+        prompt_templates.build_case3_prompt(domain, structured_text, strategy_context),
+        service_type,
+    )
+
+
 def parse_refine_intent(refine_prompt: str) -> dict[str, Any]:
     prompt = prompt_templates.build_parse_refine_intent_prompt(refine_prompt)
     try:
@@ -821,6 +828,8 @@ def api_generate_plan(payload: GeneratePlanRequest) -> GeneratePlanResponse:
             structured_text,
             short_context,
         )
+    elif strategy_context:
+        messages = build_strategy_only_prompt(payload.tab_name, payload.domain, structured_text, strategy_context)
     else:
         messages = build_case3_prompt(payload.tab_name, payload.domain, structured_text)
 

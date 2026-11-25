@@ -283,7 +283,14 @@ def build_case2_prompt(domain: str, structured_text: str, short_context: str, st
     ]
 
 
-def build_case3_prompt(domain: str, structured_text: str):
+def build_case3_prompt(domain: str, structured_text: str, strategy_context: str = ""):
+    reference_instruction = (
+        "使用者僅勾選策略參考，未勾選短程目標參考。\n"
+        "【使用者勾選的策略參考】\n" + strategy_context + "\n"
+        "請納入上述策略的核心做法，依服務對象資訊與選定長程目標推導適合的短程目標，"
+        "並將參考策略調整到相應目標下。參考資料不代表個案事實，不得直接複製不適合的情境。"
+        if strategy_context else "使用者沒有勾選任何短程目標與策略。請完全依據服務對象資訊推導。"
+    )
     return [
         ("system", SYSTEM_PROMPT),
         ("user", f"""
@@ -301,8 +308,7 @@ def build_case3_prompt(domain: str, structured_text: str):
                 
                 【服務對象資訊】
                 {structured_text}
-                使用者沒有勾選任何短程目標與策略。
-                請完全依據服務對象資訊推導：
+                {reference_instruction}
                 1. 依據七大短程目標面向產生短程目標。
                 2. 應優先涵蓋：
                     - 自然支持
