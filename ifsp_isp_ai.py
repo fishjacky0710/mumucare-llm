@@ -5,7 +5,6 @@ import unicodedata
 from functools import lru_cache
 from typing import Any, Literal
 
-import chromadb
 import pandas as pd
 import prompt as prompt_templates
 import search_timing
@@ -13,9 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.documents import Document
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
-from sentence_transformers import CrossEncoder, SentenceTransformer
 
 
 load_dotenv()
@@ -141,24 +138,32 @@ app.add_middleware(
 
 
 @lru_cache(maxsize=1)
-def get_llm() -> ChatOpenAI:
+def get_llm() -> Any:
+    from langchain_openai import ChatOpenAI
+
     return ChatOpenAI(model=OPENAI_MODEL, temperature=0.2, max_tokens=3500)
 
 
 @lru_cache(maxsize=1)
-def get_planner_llm() -> ChatOpenAI:
+def get_planner_llm() -> Any:
+    from langchain_openai import ChatOpenAI
+
     return ChatOpenAI(model=OPENAI_MODEL, temperature=0)
 
 
 @lru_cache(maxsize=1)
 @search_timing.timed("embedding_model_load")
-def get_embedder() -> SentenceTransformer:
+def get_embedder() -> Any:
+    from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer(EMBEDDING_MODEL)
 
 
 @lru_cache(maxsize=1)
 @search_timing.timed("reranker_model_load")
-def get_reranker() -> CrossEncoder:
+def get_reranker() -> Any:
+    from sentence_transformers import CrossEncoder
+
     # Jina's remote model code still imports the legacy module-level helper.
     # Transformers 4.55 moved it onto XLMRobertaEmbeddings.
     from transformers.models.xlm_roberta import modeling_xlm_roberta
@@ -173,6 +178,8 @@ def get_reranker() -> CrossEncoder:
 @lru_cache(maxsize=1)
 @search_timing.timed("chroma_collection_open")
 def get_chroma_collection():
+    import chromadb
+
     client = chromadb.PersistentClient(path=DBDIR)
     return client.get_collection(COLLECTION)
 
